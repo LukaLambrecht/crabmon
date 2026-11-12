@@ -1,0 +1,3 @@
+# ignore compiled and cached python code
+**__pycache**
+**.pyc
