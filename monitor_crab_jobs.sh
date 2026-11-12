@@ -48,10 +48,10 @@ X509_USER_PROXY=${X509_USER_PROXY:-}
 echo "Running monitor_crab_jobs.sh"
 date
 echo "Settings:"
-echo "THISDIR=$THISDIR"
-echo "SEARCHDIR=$SEARCHDIR"
-echo "WEBDIR=$WEBDIR"
-echo "X509_USER_PROXY=$X509_USER_PROXY"
+echo "  - THISDIR=$THISDIR"
+echo "  - SEARCHDIR=$SEARCHDIR"
+echo "  - WEBDIR=$WEBDIR"
+echo "  - X509_USER_PROXY=$X509_USER_PROXY"
 
 # Set up the CVMFS environment.
 #

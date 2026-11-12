@@ -365,7 +365,7 @@ if __name__ == '__main__':
     os.chdir(wdir)
     print('Loop over all tasks completed.')
     print('Retrieved following data:')
-    print(data)
+    print(json.dumps(data, indent=2))
     webpath = os.path.abspath(args.webdir)
     if not os.path.exists(webpath): os.makedirs(webpath)
 
