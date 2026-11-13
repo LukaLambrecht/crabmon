@@ -54,6 +54,6 @@ For this purpose, there is a wrapper `crabmon.sh` that sets up the environment a
 You can install a crontab on lxplus using `acrontab -e`.
 Add something like the following example:
 ```
-0,15,30,45 * * * * lxplus.cern.ch cd /eos/home-l/llambrec/crabmon; bash monitor_crab_jobs.sh -i <input path> -p <path to your proxy> -d <path to destination> >> monitor.log 2>&1
+0,15,30,45 * * * * lxplus.cern.ch cd /eos/home-l/llambrec/crabmon; bash crabmon.sh -i <input path> -p <path to your proxy> -d <path to destination> >> monitor.log 2>&1
 ```
 This will run `crabmon` every 15 minutes and put the summary in the specified destination (overwriting the previous version).

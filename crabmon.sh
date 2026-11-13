@@ -1,29 +1,29 @@
 #!/bin/bash
 #
-# Wrapper around monitor_crab_jobs.py: fills in the two paths and the proxy, then
+# Wrapper around crabmon.py: fills in the two paths and the proxy, then
 # forwards everything else straight through.
 #
 # Run it periodically, e.g. from acrontab:
-#   0 * * * * lxplus.cern.ch cd <path to here>; bash monitor_crab_jobs.sh >> monitor.log 2>&1
+#   0 * * * * lxplus.cern.ch cd <path to here>; bash crabmon.sh >> monitor.log 2>&1
 #
 # The settings below can be overridden from the environment:
-#   SEARCHDIR=/some/other/tree ./monitor_crab_jobs.sh
-#   WEBDIR=/eos/user/x/xyz/www/crab ./monitor_crab_jobs.sh
-#   X509_USER_PROXY=$HOME/private/x509up_monitor ./monitor_crab_jobs.sh
+#   SEARCHDIR=/some/other/tree ./crabmon.sh
+#   WEBDIR=/eos/user/x/xyz/www/crab ./crabmon.sh
+#   X509_USER_PROXY=$HOME/private/x509up_monitor ./crabmon.sh
 #
-# Extra arguments are passed on to monitor_crab_jobs.py.
+# Extra arguments are passed on to crabmon.py.
 # Examples:
-#   ./monitor_crab_jobs.sh -i /tree/one /tree/two
-#   ./monitor_crab_jobs.sh -t /path/to/crab_myrequest
-#   ./monitor_crab_jobs.sh -r --resubmit_args='--siteblacklist=T2_IT_Pisa'
-#   ./monitor_crab_jobs.sh --no-mirror-logs
-#   ./monitor_crab_jobs.sh --kill --kill-yes
+#   ./crabmon.sh -i /tree/one /tree/two
+#   ./crabmon.sh -t /path/to/crab_myrequest
+#   ./crabmon.sh -r --resubmit_args='--siteblacklist=T2_IT_Pisa'
+#   ./crabmon.sh --no-mirror-logs
+#   ./crabmon.sh --kill --kill-yes
 # Run it with --help to see every option.
 #
-# NOTE: arguments passed to monitor_crab_jobs.py take precedence over
+# NOTE: arguments passed to crabmon.py take precedence over
 # the ones set by this wrapper script!
 # Example:
-#   SEARCHDIR=/path/to/A ./monitor_crab_jobs.sh -i /path/to/B
+#   SEARCHDIR=/path/to/A ./crabmon.sh -i /path/to/B
 # This will use /path/to/B and not /path/to/A.
 # It is generally preferred to pass arguments on the command line
 # rather than using environment variables.
@@ -45,7 +45,7 @@ WEBDIR=${WEBDIR:-/eos/user/${USER:0:1}/$USER/www/monitor_crab_jobs}
 X509_USER_PROXY=${X509_USER_PROXY:-}
 
 # Print arguments
-echo "Running monitor_crab_jobs.sh"
+echo "Running crabmon.sh"
 date
 echo "Settings:"
 echo "  - THISDIR=$THISDIR"
@@ -71,5 +71,5 @@ if [ -n "${X509_USER_PROXY:-}" ] && [ -f "${X509_USER_PROXY}" ]; then
     PROXY_ARG="--proxy ${X509_USER_PROXY}"
 fi
 
-# Call monitor_crab_jobs.py.
-python3 "$THISDIR/monitor_crab_jobs.py" -i "$SEARCHDIR" -d "$WEBDIR" $PROXY_ARG "$@"
+# Call crabmon.py.
+python3 "$THISDIR/crabmon.py" -i "$SEARCHDIR" -d "$WEBDIR" $PROXY_ARG "$@"

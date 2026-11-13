@@ -1,8 +1,8 @@
 # Kill CRAB tasks
 #
 # Normal use is through the single entry point:
-#     python3 monitor_crab_jobs.py -i <searchdir> --kill
-#     python3 monitor_crab_jobs.py -t <requestdir> [<requestdir> ...] --kill
+#     python3 crabmon.py -i <searchdir> --kill
+#     python3 crabmon.py -t <requestdir> [<requestdir> ...] --kill
 # Standalone, for debugging this step on its own:
 #     python3 -m tools.crab_kill -i <searchdir>
 #

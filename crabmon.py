@@ -164,7 +164,7 @@ if __name__ == '__main__':
 
     # read command line arguments
     parser = argparse.ArgumentParser(
-      prog='monitor_crab_jobs.py',
+      prog='crabmon.py',
       description='Monitor, resubmit or kill CRAB tasks and publish a status page.',
       formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -221,7 +221,7 @@ if __name__ == '__main__':
           +' Only safe if the web area is access-controlled.')
 
     args = parser.parse_args()
-    print('Running monitor_crab_jobs.py with following configuration:')
+    print('Running crabmon.py with following configuration:')
     for arg in vars(args): print('  - {}: {}'.format(arg, getattr(args,arg)))
 
     # check command line arguments

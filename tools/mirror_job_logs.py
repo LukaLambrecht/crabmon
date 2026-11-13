@@ -9,7 +9,7 @@
 # per-job log URLs that `crab status` prints (https://cmsweb.cern.ch/scheddmon/...)
 # cannot be opened from a browser without the grid certificate installed - a phone, for
 # instance. This script runs where a proxy IS available (the acron monitoring sweep),
-# pulls the logs itself, and drops them in the web area next to monitor_crab_jobs'
+# pulls the logs itself, and drops them in the web area next to crabmon'
 # index.html, which is reachable with an ordinary CERN login.
 #
 # THE TASK-VS-JOB PROBLEM, AND WHY WE GROUP
@@ -43,19 +43,19 @@
 #
 # `crab status --json` is an extra crab call per task (tens of seconds), which matters
 # at a 15-minute cadence over many tasks. Two things keep it cheap:
-#   * --status-json: monitor_crab_jobs.py dumps its own per-task summary, and we then
+#   * --status-json: crabmon.py dumps its own per-task summary, and we then
 #     only pay the per-job call for tasks that actually have failures.
 #   * a cache keyed on (task, job, retry): a log already mirrored is never refetched,
 #     so a steady-state task with an unchanged failure set costs one status call.
 #
 # This is deliberately a SEPARATE module rather than extra logic inside
-# monitor_crab_jobs.py: if anything in here breaks, the status page that the sweep
-# exists to produce is unaffected. monitor_crab_jobs.py calls mirror() only after the
+# crabmon.py: if anything in here breaks, the status page that the sweep
+# exists to produce is unaffected. crabmon.py calls mirror() only after the
 # page has been written and published, inside a try/except, so a failure here cannot
 # turn a successful monitoring run into a failed one.
 #
 # USAGE
-#   Normal use is through ../monitor_crab_jobs.py, which calls mirror().
+#   Normal use is through ../crabmon.py, which calls mirror().
 #   Standalone, for debugging one step:
 #     python3 -m tools.mirror_job_logs -i <searchdir> -o <webdir> [-p <proxy>]
 #######################################################################################
@@ -600,7 +600,7 @@ def main(argv=None):
     ap.add_argument('-p', '--proxy', default=None,
                     help='Path to a valid grid proxy (passed to crab as --proxy)')
     ap.add_argument('--status-json', default=None,
-                    help='Status summary written by monitor_crab_jobs.py; limits the '
+                    help='Status summary written by crabmon.py; limits the '
                          'expensive per-job call to tasks that have failures')
     ap.add_argument('--max-per-group', default=DEFAULT_MAX_PER_GROUP, type=int,
                     help='Representative logs per failure mode (default %(default)s)')

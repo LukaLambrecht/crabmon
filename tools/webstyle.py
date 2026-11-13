@@ -1,7 +1,7 @@
 # Shared look and feel for the CRAB monitoring pages
 #
 # Both monitoring pages are built from this module, so they stay consistent:
-#   * ../monitor_crab_jobs.py   -> index.html    (per-task status)
+#   * ../crabmon.py   -> index.html    (per-task status)
 #   * mirror_job_logs.py        -> failures.html, task_<...>.html  (per-job failures)
 
 import html
