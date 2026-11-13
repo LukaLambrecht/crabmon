@@ -24,14 +24,12 @@
 #     'State', 'Retries' and 'Error' = [exit code, reason, {}].
 #   * that exit code + reason already names most failure modes for free.
 #
-# Exit code alone is NOT a sufficient signature, though. 50115 ("BadFWJRXML") is a
-# generic bucket: run_job.sh writes the framework job report as its last act, so ANY
-# earlier death reports as 50115 and genuinely different problems collapse into one
-# row. For each group we therefore also extract a signature line from a fetched
-# representative, which is the difference between a row reading
-#     50115 x 3850
-# and one reading
-#     50115 x 3850 - PYTHIA Abort: PDF initialization failed
+# Some codes are generic buckets, though: 50115 ("BadFWJRXML") means only that the
+# framework job report was not written, so ANY earlier death reports as 50115. This
+# module deliberately does NOT try to parse the logs to tell such cases apart - a
+# heuristic "cause" line easily picks up errors the payload recovered from and then
+# misleads more than it helps. The mirrored representative logs are there to be read.
+# Automated log parsing, if wanted, belongs in a separate step.
 #
 # PRIVACY
 #
@@ -78,31 +76,6 @@ from . import webstyle
 # Job states worth mirroring. 'killed' is excluded on purpose: a task we killed
 # ourselves produces thousands of uninformative termination logs.
 FAILED_STATES = ('failed',)
-
-# Lines that name the real cause, best first. Matched against the log body.
-SIGNATURE_PATTERNS = (
-    r'Fatal Exception',
-    r'PYTHIA Abort[^\n]*',
-    r'An exception of category [^\n]*',
-    r'ERROR: [^\n]*',
-    r'Removed due to [^\n]*',
-    r'error while loading shared libraries[^\n]*',
-    r'Segmentation fault[^\n]*',
-    r'No such file or directory[^\n]*',
-    r'Traceback \(most recent call last\)',
-)
-
-# Noise that must never be taken as a signature. The condor job ad is echoed verbatim
-# into every log, and PeriodicRemoveReason contains the literal strings "Removed due to
-# memory use", "Removed due to wall clock limit" etc. as ClassAd source - present in
-# every log whether or not anything was removed. Matching it would label all failures
-# with the same wrong cause.
-SIGNATURE_EXCLUDE = (
-    '== JOB AD:',
-    '== ENV:',
-    'PeriodicRemove',
-    'use crab status --verboseErrors',
-)
 
 # Redactions applied to every mirrored log. Value-level rather than line-level, so the
 # surrounding line stays readable and we do not depend on knowing every key that can
@@ -201,11 +174,59 @@ def parse_task_header(text):
     return info
 
 
-def group_failures(jobs):
-    """Group failed jobs by (exit code, reason).
+# Per-job variable parts of a CRAB error reason: UUIDs (FTS job ids), long hex hashes
+# (ASO transfer document ids) and numbers (runtimes, memory, ports, ...). Without
+# masking these, "Jobs lasted 72022.0 seconds" vs "72031.0 seconds" put every
+# wall-clock kill in its own failure mode. Order matters: the id alternatives come
+# first so a hash that starts with a digit is not chopped up as numbers.
+REASON_VAR_RX = re.compile(
+    r'\b[0-9a-f]+(?:-[0-9a-f]+){4}\b'           # UUID-like
+    r'|\b(?=[0-9a-f]*\d)[0-9a-f]{16,}\b'        # hex hash containing a digit
+    r'|\d+(?:[.:]\d+)*'                         # number, decimal or hh:mm:ss
+)
 
-    Returns a list of dicts, biggest group first, each with 'code', 'reason', 'jobids'
-    (sorted numerically) and 'retries' (job id -> final retry number).
+
+def _num_key(tok):
+    try:
+        return tuple(float(x) for x in tok.split(':'))
+    except ValueError:
+        return None
+
+
+def merge_reasons(reasons):
+    """One display string for reasons that are equal up to REASON_VAR_RX tokens.
+
+    Tokens identical across all reasons are kept; differing numbers become a
+    'min–max' range; differing ids become '…'.
+    """
+    reasons = sorted(set(reasons))
+    if len(reasons) == 1:
+        return reasons[0]
+    literals = REASON_VAR_RX.split(reasons[0])
+    columns = list(zip(*[REASON_VAR_RX.findall(r) for r in reasons]))
+    out = [literals[0]]
+    for i, col in enumerate(columns):
+        vals = set(col)
+        if len(vals) == 1:
+            tok = col[0]
+        else:
+            keys = [_num_key(v) for v in vals]
+            if all(k is not None for k in keys):
+                ordered = sorted(vals, key=_num_key)
+                tok = '{}–{}'.format(ordered[0], ordered[-1])
+            else:
+                tok = '…'
+        out.append(tok)
+        out.append(literals[i + 1])
+    return ''.join(out)
+
+
+def group_failures(jobs):
+    """Group failed jobs by (exit code, reason with per-job values masked).
+
+    Returns a list of dicts, biggest group first, each with 'code', 'reason' (merged
+    over the group, see merge_reasons), 'jobids' (sorted numerically) and 'retries'
+    (job id -> final retry number).
     """
     groups = {}
     for jobid, info in jobs.items():
@@ -219,12 +240,14 @@ def group_failures(jobs):
             code = err[0]
             if len(err) >= 2 and isinstance(err[1], str):
                 reason = err[1]
-        key = (str(code), reason)
-        g = groups.setdefault(key, {'code': str(code), 'reason': reason,
+        key = (str(code), REASON_VAR_RX.sub('#', reason))
+        g = groups.setdefault(key, {'code': str(code), 'reasons': [],
                                     'jobids': [], 'retries': {}})
+        g['reasons'].append(reason)
         g['jobids'].append(jobid)
         g['retries'][jobid] = info.get('Retries', 0)
     for g in groups.values():
+        g['reason'] = merge_reasons(g.pop('reasons'))
         g['jobids'].sort(key=lambda s: (len(s), s))
     return sorted(groups.values(), key=lambda g: -len(g['jobids']))
 
@@ -233,23 +256,6 @@ def scrub(text):
     for pattern, repl in REDACTIONS:
         text = pattern.sub(repl, text)
     return text
-
-
-def signature_of(text):
-    """First line naming a plausible cause, skipping the echoed job ad / environment."""
-    excl = SIGNATURE_EXCLUDE
-    for pattern in SIGNATURE_PATTERNS:
-        rx = re.compile(pattern)
-        for line in text.splitlines():
-            if any(e in line for e in excl):
-                continue
-            m = rx.search(line)
-            if m:
-                sig = m.group(0).strip()
-                # drop the run_job.sh "== CMSSW:" prefix noise if it survived
-                sig = re.sub(r'^==\s*CMSSW:\s*', '', sig)
-                return sig[:200]
-    return ''
 
 
 def fetch_logs(task, jobids, proxy, timeout):
@@ -306,7 +312,6 @@ def mirror_task(task, outdir, proxy, opts, cache):
     budget = opts.max_per_task
     for g in groups:
         g['logs'] = []
-        g['signature'] = ''
         reps = g['jobids'][:opts.max_per_group]
         want = []
         for jobid in reps:
@@ -315,12 +320,6 @@ def mirror_task(task, outdir, proxy, opts, cache):
             dest = os.path.join(logdir, 'job_{}_retry{}.txt'.format(jobid, retry))
             if key in cache and os.path.exists(dest):
                 g['logs'].append(os.path.basename(dest))
-                if not g['signature']:
-                    try:
-                        with open(dest, encoding='utf-8', errors='replace') as fh:
-                            g['signature'] = signature_of(fh.read())
-                    except OSError:
-                        pass
                 continue
             want.append(jobid)
         want = want[:max(0, budget - nfetched)]
@@ -344,8 +343,6 @@ def mirror_task(task, outdir, proxy, opts, cache):
                 cache['{}|{}|{}|s{}'.format(tsafe, jobid, retry,
                                             SCRUB_VERSION)] = int(time.time())
                 nfetched += 1
-                if not g['signature']:
-                    g['signature'] = signature_of(body)
         g['logs'].sort()
 
     write_task_page(outdir, tsafe, task_name, header, jobs, groups, nfailed)
@@ -366,10 +363,10 @@ def write_task_page(outdir, tsafe, task, header, jobs, groups, nfailed):
             st = info.get('State', 'unknown')
             states[st] = states.get(st, 0) + 1
 
-    sub = '{} &middot; scheduler: {} &middot; Last update: {}'.format(
+    sub = 'Task: {} &middot; Scheduler: {} &middot; Last update: {}'.format(
         webstyle.esc(task), webstyle.esc(header.get('scheduler') or '?'),
         webstyle.timestamp())
-    p = webstyle.page_head('Job failures', sub)
+    p = webstyle.page_head('CRAB job failures', sub)
 
     if header.get('grafana'):
         p += ('<p class="muted"><a href="{}" target="_blank" rel="noopener">'
@@ -382,13 +379,10 @@ def write_task_page(outdir, tsafe, task, header, jobs, groups, nfailed):
         p += '<p class="muted">No failed jobs.</p>\n'
     else:
         p += ('<p class="muted">{} failed job(s) in {} distinct failure mode(s). '
-              'The linked logs are representatives: jobs grouped on one row failed '
-              'the same way.</p>\n').format(nfailed, len(groups))
+              'The linked logs are examples (up to three per failure mode).</p>\n').format(nfailed, len(groups))
         p += '<table>\n<tr><th>Exit</th><th>Jobs</th><th>Cause</th><th>Logs</th></tr>\n'
         for g in groups:
             cause = webstyle.esc(g['reason'] or '')
-            if g.get('signature'):
-                cause += '<br><code>{}</code>'.format(webstyle.esc(g['signature']))
             links = ' '.join(
                 '<a href="logs/{}/{}">#{}</a>'.format(
                     webstyle.esc(tsafe), webstyle.esc(fn),
@@ -432,9 +426,6 @@ def write_index(outdir, summaries):
             top = ''
             if s['top']:
                 top = webstyle.esc(s['top']['reason'] or s['top']['code'])
-                if s['top'].get('signature'):
-                    top += '<br><code>{}</code>'.format(
-                        webstyle.esc(s['top']['signature']))
             p += ('<tr><td><div class="name"><a href="task_{}.html">{}</a></div>'
                   '<div class="muted">{}</div></td>'
                   '<td>{}</td><td>{}</td><td>{}</td></tr>\n').format(
